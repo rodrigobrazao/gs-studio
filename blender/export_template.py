@@ -51,15 +51,39 @@ def setup_world(bpy) -> None:
 
 def setup_render(bpy) -> None:
     scene = bpy.context.scene
-    # EEVEE Next por defeito (rápido, suficiente para preview e iteração)
-    try:
-        scene.render.engine = "BLENDER_EEVEE_NEXT"
-    except Exception:
-        scene.render.engine = "BLENDER_EEVEE"
+    # EEVEE (Blender 5.1) por defeito; algumas versões expõem _NEXT como alias
+    for engine in ("BLENDER_EEVEE_NEXT", "BLENDER_EEVEE"):
+        try:
+            scene.render.engine = engine
+            break
+        except Exception:
+            continue
     scene.render.resolution_x = 1920
     scene.render.resolution_y = 1080
     scene.render.resolution_percentage = 100
     scene.render.fps = 30
+    # Viewport em RENDERED para ver o splat colorido logo ao abrir o .blend
+    for area in bpy.context.screen.areas:
+        if area.type == 'VIEW_3D':
+            try:
+                area.spaces.active.shading.type = 'RENDERED'
+            except Exception:
+                pass
+
+
+def activate_splat_modifiers(bpy) -> None:
+    """KIRI deixa os modifiers de render com show_viewport=False por defeito.
+    Ligamo-los para o splat aparecer colorido logo ao abrir o .blend."""
+    for obj in bpy.data.objects:
+        if obj.type != "MESH":
+            continue
+        has_kiri = any("KIRI_3DGS" in m.name for m in obj.modifiers)
+        if not has_kiri:
+            continue
+        for m in obj.modifiers:
+            m.show_viewport = True
+            m.show_render = True
+        log(f"modifiers KIRI activados em '{obj.name}'")
 
 
 def import_splat(bpy, ply_path: Path) -> bool:
@@ -161,6 +185,7 @@ def main() -> None:
     setup_render(bpy)
 
     splat_ok = import_splat(bpy, args.ply)
+    activate_splat_modifiers(bpy)
     n_cams = import_colmap(bpy, args.colmap)
     add_character_placeholder(bpy)
 
