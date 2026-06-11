@@ -111,15 +111,39 @@ Alternativa: cria uma câmara nova num ponto de vista escolhido por ti e usa ess
 
 O splat tem **luz baked-in** do dia em que filmaste. Para o character não parecer colado:
 
-### Estratégia A — Luz neutra no character
-- World → cor neutra (cinza médio ou HDRI difuso)
-- Sem luzes direccionais fortes — o character só apanha a luz ambiente
-- Funciona se o cenário tinha luz suave (nublado, interior)
+### Estratégia A — HDRI gerado do próprio splat ⭐ (recomendado)
 
-### Estratégia B — HDRI extraído do vídeo
-- Captura um frame do vídeo original
-- World → Environment Texture → carrega esse frame (ou um HDRI panorâmico se filmaste 360°)
-- O character apanha a "cor" da cena
+O GS Studio inclui um gerador de HDRI panorâmico no painel **Output → Gerar HDRI**:
+
+1. Escolhe o projecto, define resolução (4096×2048 cobre 99% dos casos)
+2. Engine: **Cycles** para qualidade final, **EEVEE** para preview rápido
+3. Posição: `auto` usa o centroide dos pontos COLMAP (boa para começar)
+4. Carrega **Renderizar HDRI** — sai um `hdri.exr` na pasta do projecto
+
+Aplicar no Blender:
+1. `World → Surface → Background → Color → Environment Texture`
+2. Aponta para `<scenedir>/hdri.exr`
+3. Strength: começa em 1.0, ajusta visualmente até o character "encaixar"
+4. Opcional: roda o HDRI com Mapping node se a orientação não coincidir
+
+O character recebe iluminação **direccional e cromaticamente coerente** com o cenário — sombras, reflexos especulares (em pele, metal, plástico) e tons gerais vão encaixar no splat.
+
+#### Como funciona internamente
+
+- Backend invoca Blender headless com `blender/render_hdri.py`
+- O script importa o splat, calcula o centroide dos pontos esparsos do COLMAP
+- Cria câmara panorâmica equirectangular nessa posição (ou na que definiste)
+- Renderiza em **.EXR 32-bit float** (preserva luz brilhante sem clamping)
+
+#### Limitações conhecidas
+
+- O HDRI só tem boa informação onde o teu vídeo tinha cobertura. Filmaste a meia altura? Zénite e nadir do panorama vão estar pretos/desfocados. Para character em pé numa cena de altura humana, isto não afecta o resultado visível.
+- A escala de luz é **arbitrária** (não é HDRI calibrado fisicamente). Vais provavelmente ajustar `Strength` no World para casar com a exposição da câmara.
+
+### Estratégia B — Luz neutra no character
+- World → cor neutra (cinza médio ou HDRI difuso genérico)
+- Sem luzes direccionais fortes — o character só apanha luz ambiente
+- Funciona se o cenário tinha luz muito suave (nublado, interior difuso)
 
 ### Estratégia C — Match-light manual
 - Identifica direcção da luz principal no vídeo

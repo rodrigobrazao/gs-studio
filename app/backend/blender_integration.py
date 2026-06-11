@@ -92,6 +92,47 @@ async def enable_addons_headless(modules: list[str]) -> dict:
 # ───────────────────────────────────────────── Export to .blend
 
 
+async def render_hdri(
+    ply_path: Path,
+    colmap_dir: Path,
+    out_exr: Path,
+    blender_script: Path,
+    resolution: str = "4096x2048",
+    engine: str = "cycles",
+    samples: int = 128,
+    position: str = "auto",
+) -> dict:
+    """Corre o Blender em headless para renderizar um HDRI equirectangular."""
+    if not is_blender_installed():
+        return {"ok": False, "error": "Blender não encontrado em /Applications/Blender.app"}
+    for p, label in [(ply_path, "PLY"), (colmap_dir, "COLMAP dir"), (blender_script, "script")]:
+        if not p.exists():
+            return {"ok": False, "error": f"{label} não encontrado: {p}"}
+
+    out_exr.parent.mkdir(parents=True, exist_ok=True)
+    proc = await asyncio.create_subprocess_exec(
+        str(BLENDER_APP), "--background",
+        "--python", str(blender_script),
+        "--",
+        "--ply", str(ply_path),
+        "--colmap", str(colmap_dir),
+        "--out", str(out_exr),
+        "--resolution", resolution,
+        "--engine", engine,
+        "--samples", str(samples),
+        "--position", position,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+    )
+    stdout, _ = await proc.communicate()
+    out = stdout.decode(errors="replace")
+    return {
+        "ok": proc.returncode == 0 and out_exr.exists(),
+        "log": out[-8000:],
+        "exr": str(out_exr) if out_exr.exists() else None,
+        "size_mb": round(out_exr.stat().st_size / 1024 / 1024, 1) if out_exr.exists() else None,
+    }
+
+
 async def export_scene(
     ply_path: Path,
     colmap_dir: Path,

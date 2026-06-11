@@ -202,6 +202,36 @@
     <button class="btn primary" data-action="export-blender">Gerar .blend</button>
   </div>
   <pre id="export-log" class="log small hidden"></pre>
+
+  <h3 class="subhead">Gerar HDRI do cenário</h3>
+  <p class="muted small">Renderiza um panorama equirectangular do splat para usar como <code>Environment Texture</code> do character. Resolve o problema de iluminação no compositing.</p>
+  <div class="grid-2 mt">
+    <div class="field">
+      <label>Resolução</label>
+      <select id="hdri-resolution">
+        <option value="2048x1024">2048×1024 (rápido)</option>
+        <option value="4096x2048" selected>4096×2048 ⭐</option>
+        <option value="8192x4096">8192×4096 (qualidade máx.)</option>
+      </select>
+      <label class="mt">Engine</label>
+      <div class="seg">
+        <label><input type="radio" name="hdri-engine" value="cycles" checked> Cycles (HQ)</label>
+        <label><input type="radio" name="hdri-engine" value="eevee"> EEVEE (preview)</label>
+      </div>
+    </div>
+    <div class="field">
+      <label>Samples (Cycles) <span class="val" id="val-hdri-samples">128</span></label>
+      <input type="range" id="hdri-samples" min="32" max="512" step="32" value="128">
+      <label class="mt">Posição da câmara</label>
+      <input type="text" id="hdri-position" value="auto" placeholder='"auto" ou "x,y,z"'>
+      <div class="muted small"><code>auto</code> = centroide dos pontos COLMAP.</div>
+    </div>
+  </div>
+  <div class="row mt">
+    <button class="btn primary" data-action="render-hdri">Renderizar HDRI</button>
+    <span class="muted small">Output: <code>hdri.exr</code> ao lado do <code>.blend</code></span>
+  </div>
+  <pre id="hdri-log" class="log small hidden"></pre>
 </section>
 
 <!-- ─────────────────────────── RUN ─────────────────────────── -->

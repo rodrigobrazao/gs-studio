@@ -26,6 +26,7 @@ TEMPLATES = Jinja2Templates(directory=str(APP_ROOT / "templates"))
 UPLOADS = APP_ROOT / "data" / "uploads"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 BLENDER_EXPORT_SCRIPT = REPO_ROOT / "blender" / "export_template.py"
+BLENDER_HDRI_SCRIPT = REPO_ROOT / "blender" / "render_hdri.py"
 ADDON_DOWNLOADS = Path.home() / "Downloads" / "blender-gs-addons"
 
 app = FastAPI(title="GS Studio")
@@ -263,6 +264,32 @@ async def blender_export(payload: dict):
     colmap_dir = scenedir / "sparse" / "0"
     out_blend = scenedir / f"{scenedir.name}.blend"
     r = await bi.export_scene(ply, colmap_dir, out_blend, BLENDER_EXPORT_SCRIPT)
+    return r
+
+
+@app.post("/api/blender/render-hdri")
+async def blender_render_hdri(payload: dict):
+    """Renderiza HDRI equirectangular do splat."""
+    scenedir = Path(payload["scenedir"]).expanduser()
+    if not scenedir.exists():
+        raise HTTPException(404, f"scenedir não existe: {scenedir}")
+    exports = scenedir / "exports"
+    plys = sorted(exports.glob("export_*.ply")) if exports.exists() else []
+    if not plys:
+        raise HTTPException(404, "Nenhum .ply em exports/")
+    ply = plys[-1]
+    colmap_dir = scenedir / "sparse" / "0"
+    out_exr = scenedir / "hdri.exr"
+    r = await bi.render_hdri(
+        ply_path=ply,
+        colmap_dir=colmap_dir,
+        out_exr=out_exr,
+        blender_script=BLENDER_HDRI_SCRIPT,
+        resolution=payload.get("resolution", "4096x2048"),
+        engine=payload.get("engine", "cycles"),
+        samples=int(payload.get("samples", 128)),
+        position=payload.get("position", "auto"),
+    )
     return r
 
 

@@ -37,6 +37,7 @@
   bindVal("max-splats", "val-splats", v => Number(v).toLocaleString("pt-PT").replace(/\./g, " "));
   bindVal("growth-stop", "val-growth", v => Number(v).toLocaleString("pt-PT"));
   bindVal("export-every", "val-export", v => Number(v).toLocaleString("pt-PT"));
+  bindVal("hdri-samples", "val-hdri-samples");
 
   // ─────────────────────────────── Presets
   const presets = {
@@ -419,6 +420,44 @@
       console.error(err);
       setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 3500);
     }
+  });
+
+  $("[data-action='render-hdri']")?.addEventListener("click", async (e) => {
+    const scenedir = $("#export-project").value;
+    if (!scenedir) { alert("Escolhe um projecto primeiro."); return; }
+    const btn = e.target;
+    const log = $("#hdri-log");
+    log.classList.remove("hidden");
+    log.textContent = "A renderizar HDRI (Cycles 4k pode demorar 2–10 min)…\n";
+    btn.disabled = true; btn.textContent = "A renderizar…";
+    const engine = document.querySelector('input[name="hdri-engine"]:checked')?.value || "cycles";
+    try {
+      const r = await fetch("/api/blender/render-hdri", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenedir,
+          resolution: $("#hdri-resolution").value,
+          engine,
+          samples: +$("#hdri-samples").value,
+          position: $("#hdri-position").value.trim() || "auto",
+        }),
+      });
+      const j = await r.json();
+      log.textContent += (j.log || "") + "\n";
+      if (j.ok && j.exr) {
+        log.textContent += `\n✓ HDRI gerado: ${j.exr} (${j.size_mb} MB)`;
+        btn.textContent = "✓ Pronto";
+        const fd = new FormData(); fd.append("path", j.exr);
+        fetch("/api/reveal", { method: "POST", body: fd });
+      } else {
+        btn.textContent = "✗ Falhou";
+        log.textContent += `\n✗ Erro: ${j.error || "desconhecido"}`;
+      }
+    } catch (err) {
+      log.textContent += `\n✗ Erro: ${err}`;
+      btn.textContent = "✗ Falhou";
+    }
+    setTimeout(() => { btn.textContent = "Renderizar HDRI"; btn.disabled = false; }, 4000);
   });
 
   $("[data-action='export-blender']")?.addEventListener("click", async (e) => {
