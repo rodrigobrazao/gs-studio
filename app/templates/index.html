@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GS Studio — Gaussian Splatting</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-dot"></span>
+    <span class="brand-name">GS Studio</span>
+    <span class="brand-tag">Gaussian Splatting · macOS</span>
+  </div>
+  <nav class="topnav">
+    <a href="#panel-system" data-tab="system" class="active">Sistema</a>
+    <a href="#panel-project" data-tab="project">Projecto</a>
+    <a href="#panel-frames" data-tab="frames">Frames</a>
+    <a href="#panel-colmap" data-tab="colmap">COLMAP</a>
+    <a href="#panel-brush" data-tab="brush">Brush</a>
+    <a href="#panel-output" data-tab="output">Output</a>
+    <a href="#panel-run" data-tab="run">Execução</a>
+    <a href="#panel-history" data-tab="history">Histórico</a>
+  </nav>
+</header>
+
+<main>
+
+<!-- ─────────────────────────── SISTEMA ─────────────────────────── -->
+<section id="panel-system" class="panel">
+  <h2>Sistema</h2>
+  <p class="sub">Verifica e instala as dependências necessárias para o pipeline.</p>
+  <div class="row">
+    <button class="btn" data-action="check-deps">Verificar setup</button>
+    <button class="btn ghost" data-action="install-all">Instalar todas em falta</button>
+  </div>
+  <div id="deps-table" class="deps-table">
+    <div class="deps-loading">A verificar…</div>
+  </div>
+
+  <h3 class="subhead">Blender</h3>
+  <div id="blender-status" class="muted small"></div>
+  <div class="row mt">
+    <button class="btn" data-action="install-blender-addons">Instalar add-ons Blender</button>
+    <span class="muted small">3DGS Render KIRI + Photogrammetry Importer</span>
+  </div>
+</section>
+
+<!-- ─────────────────────────── PROJECTO ─────────────────────────── -->
+<section id="panel-project" class="panel">
+  <h2>Projecto</h2>
+  <div class="grid-2">
+    <div class="field">
+      <label>Vídeo de entrada</label>
+      <div id="drop-zone" class="dropzone">
+        <p><strong>Arrasta um vídeo</strong> ou usa um caminho local</p>
+        <input type="file" id="file-input" accept="video/*" hidden>
+        <button class="btn small" data-action="pick-file">Escolher ficheiro…</button>
+        <div class="muted">Aceita .mov, .mp4, .m4v, .mkv</div>
+      </div>
+      <label class="mt">Ou caminho directo</label>
+      <input type="text" id="video-path" placeholder="/Users/rbstudio/Desktop/input.MOV">
+      <div id="video-info" class="muted small"></div>
+    </div>
+    <div class="field">
+      <label>Nome do projecto</label>
+      <input type="text" id="project-name" placeholder="ex: PersonagemV01">
+
+      <label class="mt">Pasta de destino</label>
+      <input type="text" id="output-root" value="~/Desktop">
+      <div class="muted small">Será criada <code id="scenedir-preview">~/Desktop/&lt;nome&gt;/</code></div>
+
+      <label class="mt">Tipo de input</label>
+      <div class="seg">
+        <label><input type="radio" name="input-kind" value="perspective" checked> Perspectiva 16:9</label>
+        <label><input type="radio" name="input-kind" value="equirectangular"> Equirectangular 360°</label>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── FRAMES ─────────────────────────── -->
+<section id="panel-frames" class="panel">
+  <h2>Extracção de frames</h2>
+  <div class="grid-2">
+    <div class="field">
+      <label>FPS de extracção <span class="val" id="val-fps">3</span></label>
+      <input type="range" id="fps" min="1" max="10" value="3">
+      <div class="muted small">Mais alto = mais candidatos para o algoritmo escolher.</div>
+
+      <label class="mt">Frames máximos <span class="val" id="val-max-frames">300</span></label>
+      <input type="range" id="max-frames" min="50" max="500" step="10" value="300">
+    </div>
+    <div class="field">
+      <label>Algoritmo de selecção</label>
+      <select id="selection">
+        <option value="best-n" selected>best-n (mais nítidos)</option>
+        <option value="outlier-removal">outlier-removal</option>
+        <option value="batched">batched (uniforme no tempo)</option>
+      </select>
+
+      <div class="estimate mt">
+        <div class="muted small">Estimativa para o teu vídeo:</div>
+        <div id="estimate" class="estimate-val">—</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── COLMAP ─────────────────────────── -->
+<section id="panel-colmap" class="panel">
+  <h2>COLMAP (fotogrametria)</h2>
+  <div class="grid-2">
+    <div class="field">
+      <label>Modelo de câmara</label>
+      <select id="camera-model">
+        <option value="SIMPLE_PINHOLE">SIMPLE_PINHOLE (1 param)</option>
+        <option value="PINHOLE">PINHOLE (2 params)</option>
+        <option value="SIMPLE_RADIAL" selected>SIMPLE_RADIAL (3 params) ⭐</option>
+        <option value="RADIAL">RADIAL (4 params)</option>
+        <option value="OPENCV">OPENCV (8 params)</option>
+      </select>
+      <div class="muted small">SIMPLE_RADIAL é o sweet-spot para câmaras de vídeo desconhecidas.</div>
+
+      <label class="mt"><input type="checkbox" id="single-camera" checked> Câmara única para todas as frames</label>
+    </div>
+    <div class="field">
+      <label>Estratégia de matching</label>
+      <div class="seg">
+        <label><input type="radio" name="matcher" value="sequential" checked> Sequential (vídeo)</label>
+        <label><input type="radio" name="matcher" value="exhaustive"> Exhaustive (fotos avulsas)</label>
+      </div>
+      <div class="muted small">Sequential casa cada frame com os vizinhos no tempo — rápido e bom para vídeo.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── BRUSH ─────────────────────────── -->
+<section id="panel-brush" class="panel">
+  <h2>Brush — treino Gaussian Splatting</h2>
+
+  <div class="presets">
+    <button class="preset" data-preset="fast">Rápido<br><span>10k · 1M · SH 1</span></button>
+    <button class="preset active" data-preset="balanced">Equilibrado ⭐<br><span>30k · 4M · SH 3</span></button>
+    <button class="preset" data-preset="hq">Alta qualidade<br><span>50k · 6M · SH 3</span></button>
+  </div>
+
+  <div class="grid-2 mt">
+    <div class="field">
+      <label>Total de passos <span class="val" id="val-steps">30000</span></label>
+      <input type="range" id="total-steps" min="5000" max="50000" step="1000" value="30000">
+
+      <label class="mt">Max splats <span class="val" id="val-splats">4 000 000</span></label>
+      <input type="range" id="max-splats" min="500000" max="10000000" step="100000" value="4000000">
+
+      <label class="mt">Growth stop iter <span class="val" id="val-growth">15000</span></label>
+      <input type="range" id="growth-stop" min="5000" max="30000" step="500" value="15000">
+    </div>
+    <div class="field">
+      <label>SH degree</label>
+      <div class="seg">
+        <label><input type="radio" name="sh" value="1"> 1</label>
+        <label><input type="radio" name="sh" value="2"> 2</label>
+        <label><input type="radio" name="sh" value="3" checked> 3</label>
+      </div>
+      <div class="muted small">Mais alto = melhor cor direccional, ficheiro maior.</div>
+
+      <label class="mt">Max resolution (downsample)</label>
+      <select id="max-res">
+        <option value="">Sem downsample (recomendado)</option>
+        <option value="1024">1024 px</option>
+        <option value="2048">2048 px</option>
+        <option value="4096">4096 px</option>
+      </select>
+
+      <label class="mt">Export every <span class="val" id="val-export">5000</span></label>
+      <input type="range" id="export-every" min="1000" max="10000" step="500" value="5000">
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────── OUTPUT ─────────────────────────── -->
+<section id="panel-output" class="panel">
+  <h2>Output</h2>
+  <div class="grid-2">
+    <div class="field">
+      <label><input type="checkbox" id="auto-open" checked> Abrir <code>superspl.at</code> no fim</label>
+      <label><input type="checkbox" id="keep-intermediate"> Manter <code>.ply</code> intermédios</label>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="keep-db"> Manter <code>database.db</code> (debug)</label>
+      <label><input type="checkbox" id="backup-sparse" checked> Backup do modelo sparse (.zip)</label>
+    </div>
+  </div>
+
+  <h3 class="subhead">Exportar para Blender</h3>
+  <p class="muted small">Gera um <code>.blend</code> com o splat + câmaras COLMAP do projecto seleccionado.</p>
+  <div class="row mt">
+    <select id="export-project" class="grow"><option value="">— escolhe um projecto —</option></select>
+    <button class="btn primary" data-action="export-blender">Gerar .blend</button>
+  </div>
+  <pre id="export-log" class="log small hidden"></pre>
+</section>
+
+<!-- ─────────────────────────── RUN ─────────────────────────── -->
+<section id="panel-run" class="panel run-panel">
+  <h2>Execução</h2>
+  <div class="run-actions">
+    <button class="btn primary big" data-action="start">▶︎ Gerar Splat</button>
+    <button class="btn ghost" data-action="cancel" disabled>Cancelar</button>
+  </div>
+
+  <div class="phases">
+    <div class="phase" data-phase="extract">
+      <div class="phase-name">1 · Extracção de frames</div>
+      <div class="phase-bar"><div class="phase-fill"></div></div>
+      <div class="phase-meta">—</div>
+    </div>
+    <div class="phase" data-phase="colmap">
+      <div class="phase-name">2 · COLMAP</div>
+      <div class="phase-bar"><div class="phase-fill"></div></div>
+      <div class="phase-meta">—</div>
+    </div>
+    <div class="phase" data-phase="brush">
+      <div class="phase-name">3 · Brush (treino GS)</div>
+      <div class="phase-bar"><div class="phase-fill"></div></div>
+      <div class="phase-meta">—</div>
+    </div>
+  </div>
+
+  <div class="log-head">
+    <h3>Logs em directo</h3>
+    <label class="muted small"><input type="checkbox" id="autoscroll" checked> auto-scroll</label>
+  </div>
+  <pre id="log" class="log"></pre>
+</section>
+
+<!-- ─────────────────────────── HISTORY ─────────────────────────── -->
+<section id="panel-history" class="panel">
+  <h2>Histórico de projectos</h2>
+  <button class="btn ghost" data-action="refresh-history">Actualizar</button>
+  <div id="history-list" class="history"></div>
+</section>
+
+</main>
+
+<footer>
+  <div class="muted small">GS Studio · pipeline: sharp-frames → PyCOLMAP → Brush · made for IADE Modelação 3D</div>
+</footer>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

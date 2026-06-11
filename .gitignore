@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# App-generated data
+app/data/uploads/
+app/data/projects/
+app/data/projects.json
+
+# Logs
+*.log
+brush_*.log
+gs-studio-*.log
+
+# Build artefacts
+build/
+dist/
+*.egg

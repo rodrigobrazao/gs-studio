@@ -1,0 +1,166 @@
+"""
+GS Studio · gerador de .blend
+Corre em modo headless dentro do Blender 5.x para construir uma cena com:
+  - Splat (Gaussian Splatting .ply) importado via 3DGS Render (KIRI) ou Splats
+  - Câmaras COLMAP importadas via Photogrammetry Importer
+  - World e render setup razoáveis para começar a animar
+
+Uso (chamado pela app GS Studio):
+  blender --background --python export_template.py -- \
+      --ply <path/to/export_30000.ply> \
+      --colmap <path/to/sparse/0/> \
+      --out <path/to/output.blend>
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+
+def parse_args() -> argparse.Namespace:
+    # tudo depois de '--' é nosso; argparse precisa de ignorar args do Blender
+    if "--" in sys.argv:
+        argv = sys.argv[sys.argv.index("--") + 1:]
+    else:
+        argv = []
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ply", required=True, type=Path)
+    ap.add_argument("--colmap", required=True, type=Path)
+    ap.add_argument("--out", required=True, type=Path)
+    return ap.parse_args(argv)
+
+
+def log(msg: str) -> None:
+    print(f"[gs-studio export] {msg}", flush=True)
+
+
+def reset_scene(bpy) -> None:
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
+def setup_world(bpy) -> None:
+    world = bpy.context.scene.world or bpy.data.worlds.new("World")
+    bpy.context.scene.world = world
+    world.use_nodes = True
+    bg = world.node_tree.nodes.get("Background")
+    if bg:
+        bg.inputs[0].default_value = (0.05, 0.05, 0.06, 1.0)
+        bg.inputs[1].default_value = 1.0
+
+
+def setup_render(bpy) -> None:
+    scene = bpy.context.scene
+    # EEVEE Next por defeito (rápido, suficiente para preview e iteração)
+    try:
+        scene.render.engine = "BLENDER_EEVEE_NEXT"
+    except Exception:
+        scene.render.engine = "BLENDER_EEVEE"
+    scene.render.resolution_x = 1920
+    scene.render.resolution_y = 1080
+    scene.render.resolution_percentage = 100
+    scene.render.fps = 30
+
+
+def import_splat(bpy, ply_path: Path) -> bool:
+    """Tenta importar o splat com os add-ons disponíveis. Devolve True se conseguir."""
+    # 1) 3DGS Render by KIRI Engine
+    try:
+        bpy.ops.preferences.addon_enable(module="3dgs_render_by_kiri_engine_5.0.0")
+        log("3DGS Render (KIRI) activado")
+    except Exception:
+        try:
+            bpy.ops.preferences.addon_enable(module="3dgs_render_by_kiri_engine")
+            log("3DGS Render (KIRI) activado (legacy module name)")
+        except Exception as e:
+            log(f"Aviso: 3DGS Render não disponível ({e})")
+
+    # 2) Splats (Blender extension oficial)
+    try:
+        bpy.ops.preferences.addon_enable(module="bl_ext.blender_org.splats")
+        log("Splats extension activada")
+    except Exception:
+        pass
+
+    # 3) Tentar importar via operador KIRI (varia conforme versão)
+    handlers = [
+        ("3dgs_render.import_ply", {}),
+        ("kiri_3dgs.import_ply", {}),
+        ("splats.import_ply", {}),
+        ("import_scene.gaussian_splatting", {}),
+        ("import_mesh.ply", {}),  # último recurso: PLY como mesh
+    ]
+    for op_name, params in handlers:
+        try:
+            op_path = op_name.split(".")
+            op_module = bpy.ops
+            for part in op_path:
+                op_module = getattr(op_module, part)
+            op_module(filepath=str(ply_path), **params)
+            log(f"Splat importado via {op_name}")
+            return True
+        except Exception:
+            continue
+    log("⚠️ Nenhum importador disponível — o .ply terá de ser importado manualmente")
+    return False
+
+
+def import_colmap(bpy, sparse_dir: Path) -> int:
+    """Importa câmaras + pontos esparsos via Photogrammetry Importer. Devolve nº câmaras."""
+    try:
+        bpy.ops.preferences.addon_enable(module="photogrammetry_importer")
+    except Exception as e:
+        log(f"Aviso: Photogrammetry Importer não disponível ({e})")
+        return 0
+    try:
+        bpy.ops.import_scene.colmap_model(
+            directory=str(sparse_dir),
+            import_cameras=True,
+            import_points=True,
+        )
+        n_cams = sum(1 for o in bpy.data.objects if o.type == "CAMERA")
+        log(f"COLMAP importado · {n_cams} câmaras")
+        return n_cams
+    except Exception as e:
+        log(f"Erro ao importar COLMAP: {e}")
+        return 0
+
+
+def add_character_placeholder(bpy) -> None:
+    """Adiciona um cubo simples como placeholder para o character animado."""
+    bpy.ops.mesh.primitive_cube_add(size=0.5, location=(0, 0, 0.25))
+    obj = bpy.context.active_object
+    obj.name = "CHARACTER_PLACEHOLDER"
+    # destaca a cor
+    mat = bpy.data.materials.new(name="character_placeholder_mat")
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    if bsdf:
+        bsdf.inputs["Base Color"].default_value = (1.0, 0.35, 0.24, 1.0)
+    obj.data.materials.append(mat)
+
+
+def main() -> None:
+    args = parse_args()
+    log(f"PLY:    {args.ply}")
+    log(f"COLMAP: {args.colmap}")
+    log(f"OUT:    {args.out}")
+
+    import bpy  # disponível apenas dentro do Blender
+
+    reset_scene(bpy)
+    setup_world(bpy)
+    setup_render(bpy)
+
+    splat_ok = import_splat(bpy, args.ply)
+    n_cams = import_colmap(bpy, args.colmap)
+    add_character_placeholder(bpy)
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    bpy.ops.wm.save_as_mainfile(filepath=str(args.out))
+    log(f"Guardado: {args.out}")
+    log(f"Sumário: splat={'ok' if splat_ok else 'fallback/manual'} · câmaras={n_cams} · placeholder=CHARACTER_PLACEHOLDER")
+
+
+if __name__ == "__main__":
+    main()
