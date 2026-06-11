@@ -373,6 +373,22 @@
   }
   $("[data-action='refresh-history']").addEventListener("click", loadHistory);
 
+  $("[data-action='discover-projects']")?.addEventListener("click", async (e) => {
+    const btn = e.target;
+    const original = btn.textContent;
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const r = await fetch("/api/projects/discover", { method: "POST" });
+      const j = await r.json();
+      btn.textContent = `✓ ${j.count}`;
+      await loadHistory();
+    } catch (err) {
+      btn.textContent = "✗";
+      console.error(err);
+    }
+    setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2000);
+  });
+
   // ─────────────────────────────── Blender integration
   async function loadBlenderStatus() {
     const r = await fetch("/api/blender/status");

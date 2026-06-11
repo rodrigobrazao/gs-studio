@@ -180,6 +180,12 @@ async def list_projects():
     return {"projects": proj.load_projects(APP_ROOT)}
 
 
+@app.post("/api/projects/discover")
+async def discover_projects():
+    items = proj.discover_projects(APP_ROOT)
+    return {"projects": items, "count": len(items)}
+
+
 @app.delete("/api/projects")
 async def delete_project(scenedir: str):
     p = Path(scenedir).expanduser()
