@@ -64,16 +64,14 @@ def setup_render(bpy) -> None:
 
 def import_splat(bpy, ply_path: Path) -> bool:
     """Tenta importar o splat com os add-ons disponíveis. Devolve True se conseguir."""
-    # 1) 3DGS Render by KIRI Engine
-    try:
-        bpy.ops.preferences.addon_enable(module="3dgs_render_by_kiri_engine_5.0.0")
-        log("3DGS Render (KIRI) activado")
-    except Exception:
+    # 1) 3DGS Render by KIRI Engine (caminho preferencial)
+    for module in ("3dgs_render_by_kiri_engine_5.0.0", "3dgs_render_by_kiri_engine"):
         try:
-            bpy.ops.preferences.addon_enable(module="3dgs_render_by_kiri_engine")
-            log("3DGS Render (KIRI) activado (legacy module name)")
-        except Exception as e:
-            log(f"Aviso: 3DGS Render não disponível ({e})")
+            bpy.ops.preferences.addon_enable(module=module)
+            log(f"add-on KIRI activado: {module}")
+            break
+        except Exception:
+            continue
 
     # 2) Splats (Blender extension oficial)
     try:
@@ -82,13 +80,12 @@ def import_splat(bpy, ply_path: Path) -> bool:
     except Exception:
         pass
 
-    # 3) Tentar importar via operador KIRI (varia conforme versão)
+    # 3) Tentar importar pelo operador real do KIRI v5.0
+    #    (descoberto via inspecção do __init__.py do add-on)
     handlers = [
-        ("3dgs_render.import_ply", {}),
-        ("kiri_3dgs.import_ply", {}),
-        ("splats.import_ply", {}),
-        ("import_scene.gaussian_splatting", {}),
-        ("import_mesh.ply", {}),  # último recurso: PLY como mesh
+        ("sna.dgs_render_import_ply_e0a3a", {}),  # KIRI v5.0
+        ("wm.ply_import", {}),                    # built-in Blender 4.0+ (sem material GS, mas funciona)
+        ("import_mesh.ply", {}),                  # legado
     ]
     for op_name, params in handlers:
         try:
@@ -97,9 +94,10 @@ def import_splat(bpy, ply_path: Path) -> bool:
             for part in op_path:
                 op_module = getattr(op_module, part)
             op_module(filepath=str(ply_path), **params)
-            log(f"Splat importado via {op_name}")
+            log(f"Splat importado via bpy.ops.{op_name}")
             return True
-        except Exception:
+        except Exception as e:
+            log(f"  bpy.ops.{op_name} falhou: {e}")
             continue
     log("⚠️ Nenhum importador disponível — o .ply terá de ser importado manualmente")
     return False
@@ -107,23 +105,33 @@ def import_splat(bpy, ply_path: Path) -> bool:
 
 def import_colmap(bpy, sparse_dir: Path) -> int:
     """Importa câmaras + pontos esparsos via Photogrammetry Importer. Devolve nº câmaras."""
+    import os
     try:
         bpy.ops.preferences.addon_enable(module="photogrammetry_importer")
     except Exception as e:
         log(f"Aviso: Photogrammetry Importer não disponível ({e})")
         return 0
+    # 1) trailing slash em directory (add-on faz os.path.dirname)
+    # 2) image_dp explícito porque a nossa estrutura tem images/ 2 níveis acima
+    # 3) o operador pode lançar SystemError na fase de drawing dos pontos
+    #    em modo --background; nesse caso, as câmaras já foram criadas e
+    #    contamos-las à mesma.
+    directory_with_slash = str(sparse_dir).rstrip(os.sep) + os.sep
+    images_dir = sparse_dir.parent.parent / "images"
+    if not images_dir.exists():
+        images_dir = sparse_dir.parent.parent / "frames"
+    log(f"image_dp → {images_dir}")
     try:
         bpy.ops.import_scene.colmap_model(
-            directory=str(sparse_dir),
-            import_cameras=True,
-            import_points=True,
+            directory=directory_with_slash,
+            image_dp=str(images_dir),
         )
-        n_cams = sum(1 for o in bpy.data.objects if o.type == "CAMERA")
-        log(f"COLMAP importado · {n_cams} câmaras")
-        return n_cams
     except Exception as e:
-        log(f"Erro ao importar COLMAP: {e}")
-        return 0
+        # Tolerar — pode falhar nos pontos (GPU drawing em background)
+        log(f"Aviso durante import COLMAP (ignorado): {e}")
+    n_cams = sum(1 for o in bpy.data.objects if o.type == "CAMERA")
+    log(f"COLMAP · {n_cams} câmaras na cena")
+    return n_cams
 
 
 def add_character_placeholder(bpy) -> None:

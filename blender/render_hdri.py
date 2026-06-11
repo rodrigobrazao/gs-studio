@@ -65,10 +65,9 @@ def enable_addons(bpy) -> None:
 
 def import_splat(bpy, ply: Path) -> bool:
     handlers = [
-        "3dgs_render.import_ply",
-        "kiri_3dgs.import_ply",
-        "splats.import_ply",
-        "import_scene.gaussian_splatting",
+        "sna.dgs_render_import_ply_e0a3a",  # KIRI v5.0
+        "wm.ply_import",                    # built-in 4.0+
+        "import_mesh.ply",                  # legado
     ]
     for op_name in handlers:
         try:
@@ -76,49 +75,68 @@ def import_splat(bpy, ply: Path) -> bool:
             for part in op_name.split("."):
                 op = getattr(op, part)
             op(filepath=str(ply))
-            log(f"splat importado via {op_name}")
+            log(f"splat importado via bpy.ops.{op_name}")
             return True
-        except Exception:
+        except Exception as e:
+            log(f"  bpy.ops.{op_name} falhou: {e}")
             continue
     log("⚠️ Nenhum importador GS disponível — sem splat na cena, o HDRI ficará preto")
     return False
 
 
 def import_colmap_points(bpy, sparse_dir: Path) -> bool:
+    """Importa câmaras + pontos para podermos calcular o centroide.
+    Tolera SystemError nas drawings dos pontos em modo background."""
+    import os
+    directory_with_slash = str(sparse_dir).rstrip(os.sep) + os.sep
+    images_dir = sparse_dir.parent.parent / "images"
+    if not images_dir.exists():
+        images_dir = sparse_dir.parent.parent / "frames"
     try:
         bpy.ops.import_scene.colmap_model(
-            directory=str(sparse_dir),
-            import_cameras=False,
-            import_points=True,
+            directory=directory_with_slash,
+            image_dp=str(images_dir),
         )
-        log("COLMAP points importados")
-        return True
     except Exception as e:
-        log(f"Falhou import COLMAP: {e}")
-        return False
+        log(f"Aviso COLMAP (ignorado, possivelmente GPU em background): {e}")
+    # Contar o que ficou na cena
+    n_cams = sum(1 for o in bpy.data.objects if o.type == "CAMERA")
+    log(f"COLMAP · {n_cams} câmaras")
+    return n_cams > 0
 
 
 def compute_centroid(bpy) -> tuple[float, float, float]:
-    """Centroide das meshes/empties importadas como pontos COLMAP. Fallback (0,0,0)."""
+    """Centroide preferencialmente dos pontos COLMAP. Em modo background os
+    pontos podem não ter sido criados (limitação GPU drawing); usamos então
+    o centroide das posições das câmaras como aproximação razoável."""
     xs, ys, zs = [], [], []
+    # 1) tentar pontos
     for obj in bpy.data.objects:
         nm = obj.name.lower()
-        # heurística: pontos vêm como mesh com nome "point*" ou "colmap*"
         if "point" in nm or "colmap" in nm or obj.type == "POINTCLOUD":
             if obj.type == "MESH" and obj.data and obj.data.vertices:
                 for v in obj.data.vertices:
                     w = obj.matrix_world @ v.co
                     xs.append(w.x); ys.append(w.y); zs.append(w.z)
-            else:
-                xs.append(obj.location.x); ys.append(obj.location.y); zs.append(obj.location.z)
-    if not xs:
-        log("centroide: sem pontos, uso (0,0,0)")
-        return (0.0, 0.0, 0.0)
-    cx = sum(xs) / len(xs)
-    cy = sum(ys) / len(ys)
-    cz = sum(zs) / len(zs)
-    log(f"centroide calculado de {len(xs)} pontos: ({cx:.3f}, {cy:.3f}, {cz:.3f})")
-    return (cx, cy, cz)
+    if xs:
+        cx, cy, cz = (sum(xs) / len(xs), sum(ys) / len(ys), sum(zs) / len(zs))
+        log(f"centroide de {len(xs)} pontos: ({cx:.3f}, {cy:.3f}, {cz:.3f})")
+        return (cx, cy, cz)
+
+    # 2) fallback: centroide das câmaras COLMAP
+    cam_xs, cam_ys, cam_zs = [], [], []
+    for obj in bpy.data.objects:
+        if obj.type == "CAMERA" and obj.name != "HDRI_Camera":
+            cam_xs.append(obj.location.x)
+            cam_ys.append(obj.location.y)
+            cam_zs.append(obj.location.z)
+    if cam_xs:
+        cx, cy, cz = (sum(cam_xs) / len(cam_xs), sum(cam_ys) / len(cam_ys), sum(cam_zs) / len(cam_zs))
+        log(f"centroide (fallback) de {len(cam_xs)} câmaras: ({cx:.3f}, {cy:.3f}, {cz:.3f})")
+        return (cx, cy, cz)
+
+    log("centroide: sem pontos nem câmaras, uso (0,0,0)")
+    return (0.0, 0.0, 0.0)
 
 
 def parse_position(s: str, bpy) -> tuple[float, float, float]:

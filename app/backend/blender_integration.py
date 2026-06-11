@@ -37,27 +37,40 @@ def is_blender_installed() -> bool:
 
 
 def install_addon_from_zip(zip_path: Path) -> dict:
-    """Descomprime um zip de add-on para a pasta de add-ons do utilizador."""
+    """Descomprime um zip de add-on para a pasta de add-ons do utilizador.
+
+    Se o nome do top-level tiver dots (ex: "3dgs_render_by_kiri_engine_5.0.0"),
+    renomeia para underscores — Python não consegue importar módulos com
+    dots no nome.
+    """
     target = addons_dir()
     if not target:
         return {"ok": False, "error": "Pasta de add-ons do Blender não encontrada"}
     if not zip_path.exists():
         return {"ok": False, "error": f"Zip não encontrado: {zip_path}"}
 
-    extracted_names: list[str] = []
     with zipfile.ZipFile(zip_path) as zf:
-        # detecta o nome do diretório de top-level
         top_levels = {n.split("/")[0] for n in zf.namelist() if "/" in n}
         if len(top_levels) != 1:
             return {"ok": False, "error": f"Zip com múltiplos toplevels: {top_levels}"}
         top = top_levels.pop()
-        dest = target / top
-        if dest.exists():
-            shutil.rmtree(dest)
+        # corrige nome inválido como módulo Python (dots)
+        clean_top = top.split(".")[0] if "." in top else top
         zf.extractall(target)
-        extracted_names.append(top)
 
-    return {"ok": True, "installed": extracted_names, "target": str(target)}
+    extracted = target / top
+    final = target / clean_top
+    if clean_top != top:
+        if final.exists():
+            shutil.rmtree(final)
+        extracted.rename(final)
+
+    return {
+        "ok": True,
+        "installed": [clean_top],
+        "target": str(target),
+        "renamed_from": top if clean_top != top else None,
+    }
 
 
 async def enable_addons_headless(modules: list[str]) -> dict:

@@ -38,16 +38,22 @@ install_zip() {
     return
   fi
   echo "→ A descomprimir $(basename "$zip")…"
-  # Detecta o nome do diretório de top-level
-  local top
+  # Detecta o nome do diretório de top-level e remove dots (Python não os aceita em módulos)
+  local top clean
   top=$(unzip -Z -1 "$zip" | head -1 | sed 's|/.*||')
-  rm -rf "$ADDONS_DIR/$top"
+  clean="${top%%.*}"
+  rm -rf "$ADDONS_DIR/$top" "$ADDONS_DIR/$clean"
   unzip -q -o "$zip" -d "$ADDONS_DIR"
-  echo "  ✓ instalado: $top"
+  if [[ "$top" != "$clean" ]]; then
+    mv "$ADDONS_DIR/$top" "$ADDONS_DIR/$clean"
+    echo "  ✓ instalado: $clean (renomeado de $top)"
+  else
+    echo "  ✓ instalado: $clean"
+  fi
   ENABLE_MODULES+=("$module_hint")
 }
 
-install_zip "$ZIPS_DIR/3dgs_render_kiri_5.0.0.zip" "3dgs_render_by_kiri_engine_5.0.0"
+install_zip "$ZIPS_DIR/3dgs_render_kiri_5.0.0.zip" "3dgs_render_by_kiri_engine"
 install_zip "$ZIPS_DIR/photogrammetry_importer.zip" "photogrammetry_importer"
 
 if [[ ${#ENABLE_MODULES[@]} -gt 0 ]]; then

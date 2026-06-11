@@ -232,7 +232,8 @@ async def blender_install_addons():
     """Instala 3DGS Render (KIRI) + Photogrammetry Importer descomprimindo os zips de ~/Downloads/blender-gs-addons/."""
     results = []
     candidates = [
-        (ADDON_DOWNLOADS / "3dgs_render_kiri_5.0.0.zip", "3dgs_render_by_kiri_engine_5.0.0"),
+        # Módulo sem dots — install_addon_from_zip já normaliza o nome da pasta
+        (ADDON_DOWNLOADS / "3dgs_render_kiri_5.0.0.zip", "3dgs_render_by_kiri_engine"),
         (ADDON_DOWNLOADS / "photogrammetry_importer.zip", "photogrammetry_importer"),
     ]
     enable_list: list[str] = []
